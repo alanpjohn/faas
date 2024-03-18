@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/openfaas/faas/gateway/handlers"
 	"github.com/openfaas/faas/gateway/metrics"
 	"github.com/openfaas/faas/gateway/pkg/middleware"
+	"github.com/openfaas/faas/gateway/pkg/tracing"
 	"github.com/openfaas/faas/gateway/plugin"
 	"github.com/openfaas/faas/gateway/scaling"
 	"github.com/openfaas/faas/gateway/types"
@@ -60,6 +62,12 @@ func main() {
 			log.Panicf(readErr.Error())
 		}
 	}
+
+	shutdown, err := tracing.Provider(context.TODO(), "gateway", version.Version, version.GitCommitMessage)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer shutdown(context.TODO())
 
 	var faasHandlers types.HandlerSet
 
@@ -146,6 +154,8 @@ func main() {
 		scaler := scaling.NewFunctionScaler(scalingConfig, scalingFunctionCache)
 		functionProxy = handlers.MakeScalingHandler(functionProxy, scaler, scalingConfig, config.Namespace)
 	}
+
+	functionProxy = tracing.Middleware(functionProxy)
 
 	if config.UseNATS() {
 		log.Println("Async enabled: Using NATS Streaming")
